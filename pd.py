@@ -6,21 +6,21 @@ import pandas as pd
 from pyibl import Agent
 from tqdm import trange
 
-PARTICIPANTS = 200
+PARTICIPANTS = 50
 ROUNDS = 100
-LAG = 10
+LAG = 3
 MISMATCH = 1
 NOISE = 0.25
-DECAY = 0.75
+DECAY = 0.5
 NONE_MATCH = 0.5
 PREPOPULATED = 12
 
 MOVES = ("D", "C")
 
-T = 2
+T = 10
 R = 1
-P = 0
-S = -1
+P = -1
+S = -10
 assert(T > R > P > S)
 PAYOFFS = (((P, P), (T, S)),
            ((S, T),  (R, R)))
@@ -44,8 +44,10 @@ def shift(element, list):
 class Player:
 
     def __init__(self):
-        move_attrs = (["opp-" + str(i) for i in range(1, LAG + 1)] +
-                      ["own-" + str(i) for i in range(1, LAG + 1)])
+        move_attrs = (["opp-mv" + str(i) for i in range(1, LAG + 1)] +
+                      ["own-mv" + str(i) for i in range(1, LAG + 1)] +
+                      ["opp-pay" + str(i) for i in range(1, LAG + 1)] +
+                      ["own-pay" + str(i) for i in range(1, LAG + 1)])
         self._agent = Agent(["move"] + move_attrs,
                             mismatch_penalty=MISMATCH,
                             noise=NOISE,
@@ -56,21 +58,26 @@ class Player:
 
     def reset(self):
         self._agent.reset(True)
-        self._opp_prev = [None] * LAG
-        self._own_prev = [None] * LAG
+        self._opp_prev_mv = [None] * LAG
+        self._own_prev_mv = [None] * LAG
+        self._opp_prev_pay = [None] * LAG
+        self._own_prev_pay = [None] * LAG
 
     def choices(self):
         return [[move] + lst
-                for move, lst in zip(MOVES, repeat(self._opp_prev + self._own_prev))]
+                for move, lst in zip(MOVES, repeat(self._opp_prev_mv + self._own_prev_mv +
+                                                   self._opp_prev_pay + self._own_prev_pay))]
 
     def choose(self):
         result = self._agent.choose(self.choices())[0]
-        shift(result, self._own_prev)
+        shift(result, self._own_prev_mv)
         return result
 
-    def respond(self, opp_move, payoff):
-        shift(opp_move, self._opp_prev)
-        self._agent.respond(payoff)
+    def respond(self, opp_move, own_payoff, opp_payoff):
+        shift(opp_move, self._opp_prev_mv)
+        shift(opp_move, self._opp_prev_pay)
+        shift(opp_move, self._own_prev_pay)
+        self._agent.respond(own_payoff)
 
 
 def main():
@@ -82,8 +89,8 @@ def main():
         for round in range(1, ROUNDS + 1):
             choices = [p.choose() for p in players]
             payoffs = PAYOFFS[MOVES.index(choices[0])][MOVES.index(choices[1])]
-            for p, pay, o in zip(players, payoffs, reversed(choices)):
-                p.respond(o, pay)
+            for p, own_pay, opp_pay, opp_mv in zip(players, payoffs, reversed(payoffs), reversed(choices)):
+                p.respond(opp_mv, own_pay, opp_pay)
             results.append((part, round, choices[0], choices[1], payoffs[0], payoffs[1]))
     df = pd.DataFrame(results,
                       columns=("participant pair,round,"

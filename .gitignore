@@ -1,0 +1,8 @@
+*.pyc
+*.egg-info
+_*
+dist
+build
+.venv-activation-script
+.pyibl
+venv
